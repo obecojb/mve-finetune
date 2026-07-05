@@ -1,17 +1,17 @@
 blueprint:
-  name: Batterie Temperatur-Entwarnung
+  name: Battery Temperature All-Clear
   description: >
-    Schaltet Laden und Entladen von Batteriespeichern wieder ein wenn die
-    Innentemperatur nach einem Alarm für eine konfigurierbare Dauer unter
-    einen Schwellwert gefallen ist. Sendet eine Push-Benachrichtigung.
+    Re-enables charging and discharging of battery storage when the internal
+    temperature has dropped below a threshold for a configurable duration
+    after an alarm. Sends a push notification.
 
-    Setzt den `input_boolean` (Alarm-Status) zurück auf OFF.
+    Resets the `input_boolean` (alarm status) back to OFF.
 
-    **Companion-Blueprint:** "Batterie Temperatur-Alarm" — beide Blueprints
-    müssen mit demselben `input_boolean` konfiguriert werden.
+    **Companion blueprint:** "Battery Temperature Alarm" — both blueprints
+    must be configured with the same `input_boolean`.
 
-    **Hinweis:** Nur ein Sensor muss die Entwarnung-Schwelle unterschreiten
-    um die Rückschaltung auszulösen. Alle Schalter werden gemeinsam aktiviert.
+    **Note:** Only one sensor needs to drop below the all-clear threshold
+    to trigger recovery. All switches are re-enabled together.
 
   domain: automation
   author: obecojb
@@ -20,13 +20,13 @@ blueprint:
 
   input:
     section_sensoren:
-      name: Temperatur-Sensoren
+      name: Temperature Sensors
       icon: mdi:thermometer-chevron-down
       input:
         temp_sensors:
-          name: Temperatur-Sensoren
+          name: Temperature Sensors
           description: >
-            Dieselben Sensoren wie im Companion-Blueprint "Batterie Temperatur-Alarm".
+            The same sensors as in the companion blueprint "Battery Temperature Alarm".
           selector:
             entity:
               multiple: true
@@ -34,10 +34,10 @@ blueprint:
               device_class: temperature
 
         temp_entwarnung:
-          name: Entwarnung-Schwelle (°C)
+          name: All-Clear Threshold (°C)
           description: >
-            Temperatur muss unter diesen Wert fallen um Entwarnung auszulösen.
-            Empfehlung: 5°C unter der Alarm-Schwelle (Hysterese).
+            Temperature must drop below this value to trigger recovery.
+            Recommendation: 5°C below the alarm threshold (hysteresis).
           default: 35
           selector:
             number:
@@ -48,10 +48,10 @@ blueprint:
               mode: box
 
         temp_entwarnung_dauer:
-          name: Dauer unter Entwarnung-Schwelle
+          name: Duration Below All-Clear Threshold
           description: >
-            Temperatur muss diese Dauer stabil unter der Schwelle bleiben.
-            Empfehlung: 5 Minuten.
+            Temperature must remain stably below the threshold for this duration.
+            Recommendation: 5 minutes.
           default:
             hours: 0
             minutes: 5
@@ -60,47 +60,47 @@ blueprint:
             duration:
 
     section_schalter:
-      name: Batterie-Schalter
+      name: Battery Switches
       icon: mdi:battery-charging
       input:
         discharge_switches:
-          name: Entlade-Schalter (allow_discharge)
-          description: Werden bei Entwarnung aktiviert (turn_on)
+          name: Discharge Switches (allow_discharge)
+          description: Turned on when all-clear is triggered
           selector:
             entity:
               multiple: true
               domain: switch
 
         charge_switches:
-          name: Lade-Schalter (allow_charge)
-          description: Werden bei Entwarnung aktiviert (turn_on)
+          name: Charge Switches (allow_charge)
+          description: Turned on when all-clear is triggered
           selector:
             entity:
               multiple: true
               domain: switch
 
     section_status:
-      name: Alarm-Status
+      name: Alarm Status
       icon: mdi:alert-circle-check
       input:
         alarm_boolean:
-          name: Alarm-Status Boolean
+          name: Alarm Status Boolean
           description: >
-            Derselbe `input_boolean` wie im Companion-Blueprint "Batterie Temperatur-Alarm".
-            Wird auf OFF gesetzt wenn Entwarnung aktiv ist.
+            The same `input_boolean` as in the companion blueprint "Battery Temperature Alarm".
+            Set to OFF when all-clear is triggered.
           selector:
             entity:
               domain: input_boolean
 
     section_notify:
-      name: Benachrichtigung
+      name: Notification
       icon: mdi:bell-check
       input:
         notify_target:
-          name: Benachrichtigungs-Service
+          name: Notification Service
           description: >
-            Entity des Notify-Services für Push-Benachrichtigung.
-            Derselbe Service wie im Companion-Blueprint empfohlen.
+            Entity of the notify service for push notifications.
+            Use the same service as in the companion blueprint.
           selector:
             entity:
               domain: notify
@@ -123,7 +123,7 @@ conditions:
 # ── ACTIONS ───────────────────────────────────────────────────────────────────
 
 actions:
-  # Entlade-Schalter reaktivieren
+  # Re-enable discharge switches
   - action: switch.turn_on
     target:
       entity_id: !input discharge_switches
@@ -131,25 +131,25 @@ actions:
   - delay:
       seconds: 2
 
-  # Lade-Schalter reaktivieren
+  # Re-enable charge switches
   - action: switch.turn_on
     target:
       entity_id: !input charge_switches
 
-  # Alarm-Boolean zurücksetzen
+  # Reset alarm boolean
   - action: input_boolean.turn_off
     target:
       entity_id: !input alarm_boolean
 
-  # Push-Benachrichtigung
+  # Push notification
   - action: notify.send_message
     target:
       entity_id: !input notify_target
     data:
-      title: "✅ Batterie Temperatur OK"
+      title: "✅ Battery Temperature OK"
       message: >
         {{ trigger.to_state.attributes.friendly_name | default(trigger.to_state.entity_id) }}
-        ist wieder bei {{ trigger.to_state.state | round(1) }} °C —
-        Laden und Entladen wieder aktiviert.
+        is back at {{ trigger.to_state.state | round(1) }} °C —
+        charging and discharging have been re-enabled.
 
 mode: single

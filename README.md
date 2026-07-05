@@ -1,105 +1,104 @@
 # Marstek Battery Control — Home Assistant Blueprints
 
-Diese Blueprints sind eine Ergänzung und Weiterentwicklung des hervorragenden
-[Marstek Venus Energy Managers](https://github.com/ffunes/Marstek-Venus-Energy-Manager) von ffunes.
+These blueprints are a companion and fine-tuning extension for the excellent
+[Marstek Venus Energy Manager](https://github.com/ffunes/Marstek-Venus-Energy-Manager) by ffunes.
 
-Der Energy Manager übernimmt die gesamte Steuerungslogik der Marstek-Speicher —
-diese Blueprints erweitern ihn um eine vorgelagerte Freigabe-Ebene:
-Sie entscheiden anhand von **Batterietemperatur**, **aktuellem Strompreis** und
-**Verbrauch bzw. Einspeisung**, ob die Batterien dem Energy Manager überhaupt
-zum Laden oder Entladen zur Verfügung stehen.
-Die eigentliche Steuerung bleibt vollständig beim Energy Manager.
+The Energy Manager handles all the core control logic for Marstek battery storage —
+these blueprints add a permission layer on top:
+They decide based on **battery temperature**, **current electricity price** and
+**grid consumption vs. generation** whether the batteries are available to the
+Energy Manager for charging or discharging at all.
+The actual control remains entirely with the Energy Manager.
 
-> **Kurzgefasst:** Der Energy Manager entscheidet *wie* geladen wird —
-> diese Blueprints entscheiden *ob* geladen werden darf.
+> **In short:** The Energy Manager decides *how* to charge —
+> these blueprints decide *whether* charging is allowed.
 
 ---
 
-Home Assistant Blueprints für die Steuerung von Batteriespeichern mit Tibber-Strompreis und PV-Überschuss.
+Home Assistant blueprints for controlling battery storage based on Tibber electricity price and PV surplus.
 
-Entwickelt für Marstek Venus (MTV01/02/03), funktioniert mit jedem Batteriespeicher
-der Laden/Entladen per HA-Switch steuert.
+Developed for Marstek Venus (MTV01/02/03), works with any battery storage
+that controls charging/discharging via HA switches.
 
 ---
 
 ## Blueprints
 
-### 1. Akku Lade-Sperre (Strompreis + PV-Überschuss)
+### 1. Battery Charge Lock (Electricity Price + PV Surplus)
 
 `akku_ladesperre_tibber_pv.yaml`
 
-Schaltet Laden/Entladen automatisch anhand von Strompreis und PV-Überschuss.
+Automatically switches charging/discharging based on electricity price and PV surplus.
 
-**Logik (Priorität):**
+**Logic (priority order):**
 
-| Bedingung | Entladen | Laden |
+| Condition | Discharge | Charge |
 |---|---|---|
-| Temperatur-Alarm aktiv | — | — |
-| Netzbezug < Einspeisung-Schwelle (PV-Überschuss) | OFF | ON |
-| Strompreis < Schwelle (günstig) | OFF | ON |
-| Strompreis ≥ Schwelle (teuer) | ON | OFF |
+| Temperature alarm active | — (no action) | — (no action) |
+| Grid draw < feed-in threshold (PV surplus) | OFF | ON |
+| Electricity price < threshold (cheap) | OFF | ON |
+| Electricity price ≥ threshold (expensive) | ON | OFF |
 
-**Konfigurierbare Parameter:**
-- Strompreis-Sensor + Schwelle (Standard: 25 ct/kWh)
-- Netzbezug-Sensor + Einspeisung-/Bezugs-Schwelle (Standard: ±100 W)
-- Verzögerung für Netzbezug-Trigger (Standard: 2 Minuten)
-- Entlade-Schalter (mehrere möglich)
-- Lade-Schalter (mehrere möglich)
-- Temperatur-Alarm Boolean (Schutzabschaltung)
+**Configurable parameters:**
+- Electricity price sensor + threshold (default: 25 ct/kWh)
+- Grid power sensor + feed-in/draw thresholds (default: ±100 W)
+- Delay for grid power trigger (default: 2 minutes)
+- Discharge switches (multiple supported)
+- Charge switches (multiple supported)
+- Temperature alarm boolean (safety interlock)
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/blueprints/automation/marstek/akku_ladesperre_tibber_pv.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/akku_ladesperre_tibber_pv.yaml)
 
 ---
 
-### 2. Batterie Temperatur-Alarm
+### 2. Battery Temperature Alarm
 
 `batterie_temperatur_alarm.yaml`
 
-Deaktiviert Laden/Entladen bei Übertemperatur. Sendet Push-Benachrichtigung.
-Prüft auch beim HA-Start ob Temperaturen bereits erhöht sind.
+Disables charging and discharging when a temperature threshold is exceeded. Sends a push notification.
+Also checks on HA start whether temperatures are already elevated.
 
-**Companion-Blueprint:** zusammen mit "Batterie Temperatur-Entwarnung" verwenden.
+**Companion blueprint:** use together with "Battery Temperature All-Clear".
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/blueprints/automation/marstek/batterie_temperatur_alarm.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/batterie_temperatur_alarm.yaml)
 
 ---
 
-### 3. Batterie Temperatur-Entwarnung
+### 3. Battery Temperature All-Clear
 
 `batterie_temperatur_entwarnung.yaml`
 
-Reaktiviert Laden/Entladen wenn Temperatur nach einem Alarm wieder gesunken ist.
-Sendet Push-Benachrichtigung.
+Re-enables charging and discharging when temperature has dropped back below threshold after an alarm. Sends a push notification.
 
-**Companion-Blueprint:** zusammen mit "Batterie Temperatur-Alarm" verwenden.
+**Companion blueprint:** use together with "Battery Temperature Alarm".
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/blueprints/automation/marstek/batterie_temperatur_entwarnung.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/batterie_temperatur_entwarnung.yaml)
 
 ---
 
-## Empfohlene Kombination
+## Recommended Setup
 
-Alle drei Blueprints zusammen installieren und mit denselben Entities konfigurieren:
+Install all three blueprints and configure them with the same entities:
 
 ```
-Temperatur-Alarm Blueprint
-  → setzt input_boolean.batterie_temperatur_alarm = ON
-  → schaltet alle Charge/Discharge-Switches OFF
+Temperature Alarm Blueprint
+  → sets input_boolean.battery_temperature_alarm = ON
+  → turns all charge/discharge switches OFF
 
-Temperatur-Entwarnung Blueprint
-  → wartet auf input_boolean.batterie_temperatur_alarm = ON
-  → setzt ihn zurück auf OFF
-  → schaltet alle Charge/Discharge-Switches ON
+Temperature All-Clear Blueprint
+  → waits for input_boolean.battery_temperature_alarm = ON
+  → resets it to OFF
+  → turns all charge/discharge switches ON
 
-Lade-Sperre Blueprint
-  → prüft input_boolean.batterie_temperatur_alarm
-  → bricht ab wenn ON (Temperatur-Alarm hat Vorrang)
+Charge Lock Blueprint
+  → checks input_boolean.battery_temperature_alarm
+  → aborts if ON (temperature alarm takes priority)
 ```
 
-## Voraussetzungen
+## Requirements
 
 - Home Assistant ≥ 2023.4
-- Strompreis-Sensor in **ct/kWh** (z.B. Tibber-Integration)
-- Netzbezug-Sensor in **Watt** (negativer Wert = Einspeisung)
-- `input_boolean` für Temperatur-Alarm-Status (manuell anlegen)
-- Notify-Service für Push-Benachrichtigungen
+- Electricity price sensor in **ct/kWh** (e.g. Tibber integration)
+- Grid power sensor in **watts** (negative value = feed-in)
+- `input_boolean` for temperature alarm status (create manually)
+- Notify service for push notifications

@@ -1,16 +1,16 @@
 blueprint:
-  name: Batterie Temperatur-Alarm
+  name: Battery Temperature Alarm
   description: >
-    Deaktiviert Laden und Entladen von Batteriespeichern wenn die Innentemperatur
-    einen Schwellwert überschreitet. Sendet eine Push-Benachrichtigung.
+    Disables charging and discharging of battery storage when the internal
+    temperature exceeds a threshold. Sends a push notification.
 
-    Setzt einen `input_boolean` (Alarm-Status) auf ON — damit kann eine zweite
-    Automation (z.B. "Akku Lade-Sperre") erkennen, dass der Temperatur-Alarm
-    aktiv ist und auf eigene Eingriffe verzichten.
+    Sets an `input_boolean` (alarm status) to ON — so other automations
+    (e.g. "Battery Charge Lock") can detect that the temperature alarm is
+    active and skip their own actions.
 
-    Prüft auch beim HA-Start ob Temperaturen bereits überhöht sind.
+    Also checks on HA start whether temperatures are already elevated.
 
-    **Companion-Blueprint:** "Batterie Temperatur-Entwarnung" für die Rückschaltung.
+    **Companion blueprint:** "Battery Temperature All-Clear" for recovery.
 
   domain: automation
   author: obecojb
@@ -19,14 +19,14 @@ blueprint:
 
   input:
     section_sensoren:
-      name: Temperatur-Sensoren
+      name: Temperature Sensors
       icon: mdi:thermometer-alert
       input:
         temp_sensors:
-          name: Temperatur-Sensoren
+          name: Temperature Sensors
           description: >
-            Innentemperatur-Sensoren der Batterien.
-            Jeder Sensor löst separat aus.
+            Internal temperature sensors of the batteries.
+            Each sensor triggers independently.
           selector:
             entity:
               multiple: true
@@ -34,8 +34,8 @@ blueprint:
               device_class: temperature
 
         temp_schwelle:
-          name: Alarm-Schwelle (°C)
-          description: Überschreitung dieser Temperatur löst den Alarm aus.
+          name: Alarm Threshold (°C)
+          description: Exceeding this temperature triggers the alarm.
           default: 40
           selector:
             number:
@@ -46,10 +46,10 @@ blueprint:
               mode: box
 
         temp_verzoegerung:
-          name: Verzögerung vor Alarm
+          name: Delay Before Alarm
           description: >
-            Temperatur muss diese Dauer über der Schwelle liegen bevor der Alarm auslöst.
-            Verhindert Fehlalarme durch kurze Spitzen.
+            Temperature must stay above the threshold for this duration before
+            the alarm triggers. Prevents false alarms from brief spikes.
           default:
             hours: 0
             minutes: 0
@@ -58,48 +58,48 @@ blueprint:
             duration:
 
     section_schalter:
-      name: Batterie-Schalter
+      name: Battery Switches
       icon: mdi:battery-off
       input:
         discharge_switches:
-          name: Entlade-Schalter (allow_discharge)
-          description: Werden bei Alarm deaktiviert (turn_off)
+          name: Discharge Switches (allow_discharge)
+          description: Turned off when alarm is active
           selector:
             entity:
               multiple: true
               domain: switch
 
         charge_switches:
-          name: Lade-Schalter (allow_charge)
-          description: Werden bei Alarm deaktiviert (turn_off)
+          name: Charge Switches (allow_charge)
+          description: Turned off when alarm is active
           selector:
             entity:
               multiple: true
               domain: switch
 
     section_status:
-      name: Alarm-Status
+      name: Alarm Status
       icon: mdi:alert
       input:
         alarm_boolean:
-          name: Alarm-Status Boolean
+          name: Alarm Status Boolean
           description: >
-            Wird auf ON gesetzt wenn Alarm aktiv ist. Andere Automationen
-            (z.B. Lade-Sperre) können diesen Boolean prüfen und bei aktivem
-            Alarm auf Eingriffe verzichten.
+            Set to ON when alarm is active. Other automations
+            (e.g. Charge Lock) can check this boolean and skip
+            their actions while the alarm is active.
           selector:
             entity:
               domain: input_boolean
 
     section_notify:
-      name: Benachrichtigung
+      name: Notification
       icon: mdi:bell-alert
       input:
         notify_target:
-          name: Benachrichtigungs-Service
+          name: Notification Service
           description: >
-            Entity des Notify-Services für Push-Benachrichtigung.
-            Beispiel: notify.mobile_app_mein_telefon
+            Entity of the notify service for push notifications.
+            Example: notify.mobile_app_my_phone
           selector:
             entity:
               domain: notify
@@ -132,7 +132,7 @@ actions:
       _charge_switches: !input charge_switches
       alarm_war_aktiv: "{{ is_state(_alarm_boolean, 'on') }}"
 
-  # Beim HA-Start: kurz warten bis Entities verfügbar sind
+  # On HA start: wait briefly until entities are available
   - if:
       - condition: template
         value_template: "{{ trigger.id == 'startup' }}"
@@ -140,12 +140,12 @@ actions:
       - delay:
           seconds: 30
 
-  # Alarm-Boolean setzen
+  # Set alarm boolean
   - action: input_boolean.turn_on
     target:
       entity_id: !input alarm_boolean
 
-  # Jeden Sensor prüfen — überhitzte Batterien abschalten
+  # Check each sensor — turn off overheated batteries
   - repeat:
       for_each: "{{ _temp_sensors }}"
       sequence:
@@ -163,7 +163,7 @@ actions:
               target:
                 entity_id: !input charge_switches
 
-  # Push-Benachrichtigung bei neuem Alarm (nicht beim Startup, nicht wenn bereits aktiv)
+  # Push notification for new alarm (not on startup, not if already active)
   - if:
       - condition: template
         value_template: "{{ trigger.id == 'temperatur' and not alarm_war_aktiv }}"
@@ -172,14 +172,14 @@ actions:
         target:
           entity_id: !input notify_target
         data:
-          title: "⚠️ Batterie Überhitzung"
+          title: "⚠️ Battery Overheating"
           message: >
             {{ trigger.to_state.attributes.friendly_name | default(trigger.to_state.entity_id) }}
-            meldet {{ trigger.to_state.state | round(1) }} °C —
-            Schwelle {{ _temp_schwelle }}°C überschritten!
-            Laden und Entladen wurde deaktiviert.
+            reports {{ trigger.to_state.state | round(1) }} °C —
+            threshold of {{ _temp_schwelle }}°C exceeded!
+            Charging and discharging have been disabled.
 
-  # Beim Start: Benachrichtigung wenn bereits überhitzt
+  # On startup: notification if already overheated
   - if:
       - condition: template
         value_template: "{{ trigger.id == 'startup' }}"
@@ -204,9 +204,9 @@ actions:
             target:
               entity_id: !input notify_target
             data:
-              title: "⚠️ Batterie Überhitzung beim Start erkannt"
+              title: "⚠️ Battery Overheating Detected on Startup"
               message: >
-                Folgende Sensoren über {{ _temp_schwelle }}°C: {{ startup_hot }}.
-                Laden und Entladen wurde deaktiviert.
+                The following sensors are above {{ _temp_schwelle }}°C: {{ startup_hot }}.
+                Charging and discharging have been disabled.
 
 mode: parallel

@@ -1,26 +1,26 @@
 blueprint:
-  name: Akku Lade-Sperre (Strompreis + PV-Überschuss)
+  name: Battery Charge Lock (Electricity Price + PV Surplus)
   description: >
-    Schaltet Lade- und Entlade-Erlaubnis von Batteriespeichern automatisch anhand
-    des aktuellen Strompreises und PV-Überschuss.
+    Automatically controls charge and discharge permission of battery storage
+    based on current electricity price and PV surplus.
 
-    **Priorität:**
-    1. Temperatur-Alarm aktiv → kein Eingriff
-    2. PV-Überschuss (Netzbezug unter Einspeisung-Schwelle) → Entladen OFF, Laden ON
-    3. Preis unter Schwelle → Entladen OFF, Laden ON
-    4. Preis über Schwelle → Entladen ON, Laden OFF
+    **Priority:**
+    1. Temperature alarm active → no action
+    2. PV surplus (grid draw below feed-in threshold) → discharge OFF, charge ON
+    3. Price below threshold → discharge OFF, charge ON
+    4. Price above threshold → discharge ON, charge OFF
 
-    Sendet eine `persistent_notification` nur wenn sich tatsächlich etwas ändert.
+    Sends a `persistent_notification` only when something actually changes.
 
-    Feuert außerdem bei HA-Start und jede Stunde um XX:05, damit der korrekte
-    Zustand auch nach einem Neustart oder Reload ohne Schwellenübergang gesetzt wird.
+    Also triggers on HA start and every hour at XX:05 to ensure correct state
+    after a restart or reload — no threshold crossing required.
 
-    **Voraussetzungen:**
-    - Strompreis-Sensor in ct/kWh
-    - Netzbezug-Sensor: negativer Wert = Einspeisung, positiver Wert = Bezug
-    - Temperatur-Alarm: ein `input_boolean` der von einer separaten Automation
-      gesetzt wird (z.B. Blueprint "Batterie Temperatur-Alarm"). Falls nicht
-      benötigt: einfach einen immer-OFF Boolean anlegen.
+    **Requirements:**
+    - Electricity price sensor in ct/kWh
+    - Grid power sensor: negative value = feed-in, positive value = grid draw
+    - Temperature alarm: an `input_boolean` set by a separate automation
+      (e.g. Blueprint "Battery Temperature Alarm"). If not needed: create an
+      always-OFF boolean.
 
   domain: automation
   author: obecojb
@@ -29,21 +29,21 @@ blueprint:
 
   input:
     section_preis:
-      name: Strompreis
+      name: Electricity Price
       icon: mdi:currency-eur
       input:
         preis_sensor:
-          name: Strompreis-Sensor
-          description: Aktueller Strompreis in ct/kWh
+          name: Electricity Price Sensor
+          description: Current electricity price in ct/kWh
           selector:
             entity:
               domain: sensor
 
         preis_schwelle:
-          name: Preis-Schwelle (ct/kWh)
+          name: Price Threshold (ct/kWh)
           description: >
-            Unterhalb → Laden erlaubt, Entladen gesperrt.
-            Oberhalb → Entladen erlaubt, Laden gesperrt.
+            Below → charge allowed, discharge locked.
+            Above → discharge allowed, charge locked.
           default: 25
           selector:
             number:
@@ -54,24 +54,24 @@ blueprint:
               mode: box
 
     section_pv:
-      name: PV-Überschuss / Netzbezug
+      name: PV Surplus / Grid Draw
       icon: mdi:solar-power
       input:
         leistung_sensor:
-          name: Netzbezug-Sensor
+          name: Grid Power Sensor
           description: >
-            Sensor für Netzleistung in Watt.
-            Negativer Wert = Einspeisung ins Netz (PV-Überschuss).
-            Positiver Wert = Bezug aus dem Netz.
+            Sensor for grid power in watts.
+            Negative value = feed-in to grid (PV surplus).
+            Positive value = draw from grid.
           selector:
             entity:
               domain: sensor
 
         schwelle_einspeisung:
-          name: Einspeisung-Schwelle (Watt)
+          name: Feed-in Threshold (Watts)
           description: >
-            PV-Überschuss wird erkannt wenn Netzbezug UNTER diesem negativen Wert liegt.
-            Empfehlung: -100 W (filtert Messrauschen).
+            PV surplus is detected when grid draw is BELOW this negative value.
+            Recommendation: -100 W (filters measurement noise).
           default: -100
           selector:
             number:
@@ -82,10 +82,10 @@ blueprint:
               mode: box
 
         schwelle_bezug:
-          name: Netzbezug-Schwelle (Watt)
+          name: Grid Draw Threshold (Watts)
           description: >
-            PV-Überschuss endet wenn Netzbezug ÜBER diesem positiven Wert liegt.
-            Empfehlung: 100 W (symmetrisch zur Einspeisung-Schwelle).
+            PV surplus ends when grid draw is ABOVE this positive value.
+            Recommendation: 100 W (symmetric to feed-in threshold).
           default: 100
           selector:
             number:
@@ -96,10 +96,10 @@ blueprint:
               mode: box
 
         leistung_verzoegerung:
-          name: Verzögerung Netzbezug-Trigger
+          name: Grid Power Trigger Delay
           description: >
-            Stabile Dauer bevor Netzbezug-Trigger feuert.
-            Empfehlung: 2 Minuten (filtert ~74% der Fehlauslösungen durch Messrauschen).
+            Stable duration before grid power trigger fires.
+            Recommendation: 2 minutes (filters ~74% of false triggers from noise).
           default:
             hours: 0
             minutes: 2
@@ -108,35 +108,35 @@ blueprint:
             duration:
 
     section_schalter:
-      name: Batterie-Schalter
+      name: Battery Switches
       icon: mdi:battery-charging
       input:
         discharge_switches:
-          name: Entlade-Schalter (allow_discharge)
-          description: Schalter die das Entladen der Batterien erlauben/sperren
+          name: Discharge Switches (allow_discharge)
+          description: Switches that allow or lock battery discharge
           selector:
             entity:
               multiple: true
               domain: switch
 
         charge_switches:
-          name: Lade-Schalter (allow_charge)
-          description: Schalter die das Laden der Batterien erlauben/sperren
+          name: Charge Switches (allow_charge)
+          description: Switches that allow or lock battery charging
           selector:
             entity:
               multiple: true
               domain: switch
 
     section_schutz:
-      name: Schutzfunktionen
+      name: Protection
       icon: mdi:shield-alert
       input:
         temperatur_alarm:
-          name: Temperatur-Alarm Boolean
+          name: Temperature Alarm Boolean
           description: >
-            Wenn dieser Input Boolean 'on' ist, bricht die Automation ab.
-            Damit behält eine separate Temperatur-Alarm-Automation volle Kontrolle.
-            Tipp: Blueprint "Batterie Temperatur-Alarm" verwenden.
+            When this input boolean is 'on', the automation aborts immediately.
+            This gives a separate temperature alarm automation full control.
+            Tip: use the "Battery Temperature Alarm" blueprint.
           selector:
             entity:
               domain: input_boolean
@@ -184,7 +184,7 @@ conditions:
 # ── ACTIONS ───────────────────────────────────────────────────────────────────
 
 actions:
-  # Schritt 1: Blueprint-Inputs als Template-Variablen verfügbar machen
+  # Step 1: Make blueprint inputs available as template variables
   - variables:
       _preis_sensor: !input preis_sensor
       _leistung_sensor: !input leistung_sensor
@@ -193,7 +193,7 @@ actions:
       _discharge_switches: !input discharge_switches
       _charge_switches: !input charge_switches
 
-  # Schritt 2: Zielzustand berechnen, nur abweichende Schalter erfassen
+  # Step 2: Calculate target state, collect only switches that need changing
   - variables:
       switches_to_change: >
         {% set preis = states(_preis_sensor) | float(-1) %}
@@ -236,11 +236,11 @@ actions:
           {{ ns.list }}
         {% endif %}
 
-  # Schritt 3: Abbrechen wenn keine Änderung nötig
+  # Step 3: Abort if no changes needed
   - condition: template
     value_template: "{{ switches_to_change | length > 0 }}"
 
-  # Schritt 4: Schalter setzen
+  # Step 4: Set switches
   - repeat:
       for_each: "{{ switches_to_change }}"
       sequence:
@@ -256,23 +256,23 @@ actions:
                   target:
                     entity_id: "{{ repeat.item.entity }}"
 
-  # Schritt 5: Zusammenfassung als Benachrichtigung
+  # Step 5: Summary notification
   - action: persistent_notification.create
     data:
-      title: "Akku-Sperre: Strompreis / PV-Überschuss"
+      title: "Battery Lock: Price / PV Surplus"
       message: >
         {% set netzbezug = states(_leistung_sensor) | float(0) %}
         {% set preis = states(_preis_sensor) | float(0) %}
         {% set pv_ueberschuss = netzbezug < _schwelle_einspeisung %}
         {% if pv_ueberschuss %}
-        Modus: **PV-Überschuss** (Netzbezug {{ netzbezug | round(0) }} W → Entladen OFF, Laden ON)
+        Mode: **PV surplus** (grid {{ netzbezug | round(0) }} W → discharge OFF, charge ON)
         {% elif preis < _preis_schwelle %}
-        Modus: **günstig** ({{ preis }} ct/kWh < {{ _preis_schwelle }} ct → Entladen OFF, Laden ON)
+        Mode: **cheap** ({{ preis }} ct/kWh < {{ _preis_schwelle }} ct → discharge OFF, charge ON)
         {% else %}
-        Modus: **teuer** ({{ preis }} ct/kWh ≥ {{ _preis_schwelle }} ct → Entladen ON, Laden OFF)
+        Mode: **expensive** ({{ preis }} ct/kWh ≥ {{ _preis_schwelle }} ct → discharge ON, charge OFF)
         {% endif %}
 
-        Geänderte Schalter:
+        Changed switches:
         {% for item in switches_to_change %}
         - {{ item.name }}: `{{ item.old }}` → `{{ item.target }}`
         {% endfor %}
