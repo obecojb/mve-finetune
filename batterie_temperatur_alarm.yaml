@@ -1,0 +1,212 @@
+blueprint:
+  name: Batterie Temperatur-Alarm
+  description: >
+    Deaktiviert Laden und Entladen von Batteriespeichern wenn die Innentemperatur
+    einen Schwellwert überschreitet. Sendet eine Push-Benachrichtigung.
+
+    Setzt einen `input_boolean` (Alarm-Status) auf ON — damit kann eine zweite
+    Automation (z.B. "Akku Lade-Sperre") erkennen, dass der Temperatur-Alarm
+    aktiv ist und auf eigene Eingriffe verzichten.
+
+    Prüft auch beim HA-Start ob Temperaturen bereits überhöht sind.
+
+    **Companion-Blueprint:** "Batterie Temperatur-Entwarnung" für die Rückschaltung.
+
+  domain: automation
+  author: obecojb
+  homeassistant:
+    min_version: "2023.4.0"
+
+  input:
+    section_sensoren:
+      name: Temperatur-Sensoren
+      icon: mdi:thermometer-alert
+      input:
+        temp_sensors:
+          name: Temperatur-Sensoren
+          description: >
+            Innentemperatur-Sensoren der Batterien.
+            Jeder Sensor löst separat aus.
+          selector:
+            entity:
+              multiple: true
+              domain: sensor
+              device_class: temperature
+
+        temp_schwelle:
+          name: Alarm-Schwelle (°C)
+          description: Überschreitung dieser Temperatur löst den Alarm aus.
+          default: 40
+          selector:
+            number:
+              min: 20
+              max: 80
+              step: 1
+              unit_of_measurement: °C
+              mode: box
+
+        temp_verzoegerung:
+          name: Verzögerung vor Alarm
+          description: >
+            Temperatur muss diese Dauer über der Schwelle liegen bevor der Alarm auslöst.
+            Verhindert Fehlalarme durch kurze Spitzen.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 30
+          selector:
+            duration:
+
+    section_schalter:
+      name: Batterie-Schalter
+      icon: mdi:battery-off
+      input:
+        discharge_switches:
+          name: Entlade-Schalter (allow_discharge)
+          description: Werden bei Alarm deaktiviert (turn_off)
+          selector:
+            entity:
+              multiple: true
+              domain: switch
+
+        charge_switches:
+          name: Lade-Schalter (allow_charge)
+          description: Werden bei Alarm deaktiviert (turn_off)
+          selector:
+            entity:
+              multiple: true
+              domain: switch
+
+    section_status:
+      name: Alarm-Status
+      icon: mdi:alert
+      input:
+        alarm_boolean:
+          name: Alarm-Status Boolean
+          description: >
+            Wird auf ON gesetzt wenn Alarm aktiv ist. Andere Automationen
+            (z.B. Lade-Sperre) können diesen Boolean prüfen und bei aktivem
+            Alarm auf Eingriffe verzichten.
+          selector:
+            entity:
+              domain: input_boolean
+
+    section_notify:
+      name: Benachrichtigung
+      icon: mdi:bell-alert
+      input:
+        notify_target:
+          name: Benachrichtigungs-Service
+          description: >
+            Entity des Notify-Services für Push-Benachrichtigung.
+            Beispiel: notify.mobile_app_mein_telefon
+          selector:
+            entity:
+              domain: notify
+
+# ── TRIGGERS ──────────────────────────────────────────────────────────────────
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input temp_sensors
+    above: !input temp_schwelle
+    for: !input temp_verzoegerung
+    id: temperatur
+
+  - trigger: homeassistant
+    event: start
+    id: startup
+
+# ── CONDITIONS ────────────────────────────────────────────────────────────────
+
+conditions: []
+
+# ── ACTIONS ───────────────────────────────────────────────────────────────────
+
+actions:
+  - variables:
+      _temp_sensors: !input temp_sensors
+      _temp_schwelle: !input temp_schwelle
+      _alarm_boolean: !input alarm_boolean
+      _discharge_switches: !input discharge_switches
+      _charge_switches: !input charge_switches
+      alarm_war_aktiv: "{{ is_state(_alarm_boolean, 'on') }}"
+
+  # Beim HA-Start: kurz warten bis Entities verfügbar sind
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'startup' }}"
+    then:
+      - delay:
+          seconds: 30
+
+  # Alarm-Boolean setzen
+  - action: input_boolean.turn_on
+    target:
+      entity_id: !input alarm_boolean
+
+  # Jeden Sensor prüfen — überhitzte Batterien abschalten
+  - repeat:
+      for_each: "{{ _temp_sensors }}"
+      sequence:
+        - if:
+            - condition: numeric_state
+              entity_id: "{{ repeat.item }}"
+              above: !input temp_schwelle
+          then:
+            - action: switch.turn_off
+              target:
+                entity_id: !input discharge_switches
+            - delay:
+                seconds: 2
+            - action: switch.turn_off
+              target:
+                entity_id: !input charge_switches
+
+  # Push-Benachrichtigung bei neuem Alarm (nicht beim Startup, nicht wenn bereits aktiv)
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'temperatur' and not alarm_war_aktiv }}"
+    then:
+      - action: notify.send_message
+        target:
+          entity_id: !input notify_target
+        data:
+          title: "⚠️ Batterie Überhitzung"
+          message: >
+            {{ trigger.to_state.attributes.friendly_name | default(trigger.to_state.entity_id) }}
+            meldet {{ trigger.to_state.state | round(1) }} °C —
+            Schwelle {{ _temp_schwelle }}°C überschritten!
+            Laden und Entladen wurde deaktiviert.
+
+  # Beim Start: Benachrichtigung wenn bereits überhitzt
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'startup' }}"
+    then:
+      - variables:
+          startup_hot: >
+            {% set ns = namespace(list=[]) %}
+            {% for s in _temp_sensors %}
+              {% if states(s) | float(0) > _temp_schwelle %}
+                {% set ns.list = ns.list + [
+                  state_attr(s, 'friendly_name') | default(s, true) +
+                  ' (' + states(s) + '°C)'
+                ] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.list | join(', ') }}
+      - if:
+          - condition: template
+            value_template: "{{ startup_hot != '' }}"
+        then:
+          - action: notify.send_message
+            target:
+              entity_id: !input notify_target
+            data:
+              title: "⚠️ Batterie Überhitzung beim Start erkannt"
+              message: >
+                Folgende Sensoren über {{ _temp_schwelle }}°C: {{ startup_hot }}.
+                Laden und Entladen wurde deaktiviert.
+
+mode: parallel

