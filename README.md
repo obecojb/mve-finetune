@@ -1,5 +1,20 @@
 # Marstek Battery Control — Home Assistant Blueprints
 
+Diese Blueprints sind eine Ergänzung und Weiterentwicklung des hervorragenden
+[Marstek Venus Energy Managers](https://github.com/ffunes/Marstek-Venus-Energy-Manager) von ffunes.
+
+Der Energy Manager übernimmt die gesamte Steuerungslogik der Marstek-Speicher —
+diese Blueprints erweitern ihn um eine vorgelagerte Freigabe-Ebene:
+Sie entscheiden anhand von **Batterietemperatur**, **aktuellem Strompreis** und
+**Verbrauch bzw. Einspeisung**, ob die Batterien dem Energy Manager überhaupt
+zum Laden oder Entladen zur Verfügung stehen.
+Die eigentliche Steuerung bleibt vollständig beim Energy Manager.
+
+> **Kurzgefasst:** Der Energy Manager entscheidet *wie* geladen wird —
+> diese Blueprints entscheiden *ob* geladen werden darf.
+
+---
+
 Home Assistant Blueprints für die Steuerung von Batteriespeichern mit Tibber-Strompreis und PV-Überschuss.
 
 Entwickelt für Marstek Venus (MTV01/02/03), funktioniert mit jedem Batteriespeicher
@@ -32,7 +47,7 @@ Schaltet Laden/Entladen automatisch anhand von Strompreis und PV-Überschuss.
 - Lade-Schalter (mehrere möglich)
 - Temperatur-Alarm Boolean (Schutzabschaltung)
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mha_2026/main/blueprints/automation/marstek/akku_ladesperre_tibber_pv.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/blueprints/automation/marstek/akku_ladesperre_tibber_pv.yaml)
 
 ---
 
@@ -45,7 +60,7 @@ Prüft auch beim HA-Start ob Temperaturen bereits erhöht sind.
 
 **Companion-Blueprint:** zusammen mit "Batterie Temperatur-Entwarnung" verwenden.
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mha_2026/main/blueprints/automation/marstek/batterie_temperatur_alarm.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/blueprints/automation/marstek/batterie_temperatur_alarm.yaml)
 
 ---
 
@@ -58,7 +73,7 @@ Sendet Push-Benachrichtigung.
 
 **Companion-Blueprint:** zusammen mit "Batterie Temperatur-Alarm" verwenden.
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mha_2026/main/blueprints/automation/marstek/batterie_temperatur_entwarnung.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/obecojb/mve-finetune/main/blueprints/automation/marstek/batterie_temperatur_entwarnung.yaml)
 
 ---
 
